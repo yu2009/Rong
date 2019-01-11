@@ -29,12 +29,14 @@ const UserController = require('./services/controller/user.js');
 const smsController = require('./services/controller/sms.js');
 // checkToken 作为中间件存在
 const checkToken = require('./services/token/check-token.js');
+// 查询
+router.post('/queryPhone', UserController.queryPhone);
 // 登录
 router.post('/login', UserController.Login);
-//注册
+// 注册
 router.post('/register', UserController.Register);
-//短信
-router.post('/sms', smsController)
+// 短信
+router.post('/sms', smsController);
 // 装载路由
 router.use('/test', router.routes(), router.allowedMethods()); // 测试
 // router.use('/api', router.routes(), router.allowedMethods()); // 线上

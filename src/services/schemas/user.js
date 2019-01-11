@@ -1,6 +1,7 @@
 let mongoose = require('mongoose');
 let UserSchema = new mongoose.Schema({
     userName: String,
+    phoneNumber: String,
     password: String,
     token: String,
     create_time: Date
