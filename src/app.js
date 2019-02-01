@@ -1,142 +1,52 @@
 const Koa = require('koa');
-const sha1 = require('sha1'); // 用于密码加密
-const router = require('koa-router')(); // 路由模块
-const bodyParser = require('koa-bodyparser'); // koa-bodyparser中间件可以把koa2上下文的formData数据解析到ctx.request.body中
-const path = require('path');
-const static = require('koa-static'); // 静态资源中间件
-/*** mongoose ***/
-const mongoose = require('mongoose');
-const User = require('./services/models/user');
-mongoose.connect('mongodb://localhost/user', {useNewUrlParser: true}); // 链接数据库
-/*** mongoose ***/
-const moment = require('moment'); // 用于生成时间
-const objectIdToTimestamp = require('objectid-to-timestamp'); // 用于生成时间
+const convert = require('koa-convert');
+const koaLogger = require('koa-logger');
+const cors = require('koa2-cors');
+const static = require('koa-static');
+const bodyParser = require('koa-bodyparser');
+const mongoose =require('mongoose');
+const config = require('./config');
+const routers = require('./routes');
 const app = new Koa();
-app.use(bodyParser()); // 通过ctx.request.body
-app.use(static(path.join(__dirname), 'public'));
-/*数据库操作*/
-/*根据用户名查找用户*/
-const findUser = (userName) => {
-    return new Promise((resolve, reject) => {
-        User.findOne({userName}, (err, doc) => {
-            if (err) {
-                reject(err);
-            }
-            resolve(doc);
-        });
-    });
-};
-/*登录*/
-const Login = async (ctx) => {
-    let userName = ctx.request.body.userName;
-    let password = sha1(ctx.request.body.password);
-    let doc = await findUser(userName);
-    if (!doc) {
-        console.log('检查到用户名不存在');
-        ctx.status = 200;
-        ctx.body = {
-            info: false
-        };
-    } else if (doc.password === password) {
-        console.log('密码一致!');
-        //生成一个新的token,并存到数据库
-        let token = createToken(userName);
-        console.log(token);
-        doc.token = token;
-        await new Promise((resolve, reject) => {
-            doc.save((err) => {
-                if (err) {
-                    reject(err);
-                }
-                resolve();
-            });
-        });
-        ctx.status = 200;
-        ctx.body = {
-            success: true,
-            userName,
-            token, //登录成功要创建一个新的token,应该存入数据库
-            create_time: doc.create_time
-        };
-    } else {
-        console.log('密码错误!');
-        ctx.status = 200;
-        ctx.body = {
-            success: false
-        };
-    }
-};
-/*注册*/
-const Register = async (ctx) => {
-    let user = new User({
-        username: ctx.request.body.userName,
-        password: sha1(ctx.request.body.password), //加密
-        token: createToken(this.userName), //创建token并存入数据库
-        create_time: moment(objectIdToTimestamp(user._id)).format('YYYY-MM-DD HH:mm:ss'),//将objectid转换为用户创建时间
-    });
-    //将objectid转换为用户创建时间(可以不用)
-    user.create_time = moment(objectIdToTimestamp(user._id)).format('YYYY-MM-DD HH:mm:ss');
-
-    let doc = await findUser(user.userName);
-    if (doc) {
-        console.log('用户名已经存在');
-        ctx.status = 200;
-        ctx.body = {
-            success: false
-        };
-    } else {
-        await new Promise((resolve, reject) => {
-            user.save((err) => {
-                if (err) {
-                    reject(err);
-                }
-                resolve();
-            });
-        });
-        console.log('注册成功');
-        ctx.status = 200;
-        ctx.body = {
-            success: true
-        };
-    }
-};
-// 获取post提交的数据
-//引入配置中间件
-// app.use(async (ctx) => {
-//     ctx.body = 'hello koa2';
-// });
-router.get('/', async (ctx, next) => { // ctx 是 Koa的应用上下文 next 串联中间件的钩子
-    ctx.body = 'Hello koa';
+// 配置控制台日志中间件
+app.use(convert(koaLogger()));
+// bodyparser:该中间件用于post请求的数据
+app.use(bodyParser());
+// 跨域请求
+app.use(cors({
+    origin: function (ctx) {
+        // 测试接口允许来自所有域名请求
+        if (ctx.url.indexOf('/test') >= 0) {
+            return '*';
+        }
+        // 只允许 http://localhost:8090 这个域名的请求了
+        return 'http://rong_web.helptechltd.com';
+    },
+    exposeHeaders: ['WWW-Authenticate', 'Server-Authorization'],
+    maxAge: 5,
+    credentials: true, // 当设置成允许请求携带cookie时，需要保证"Access-Control-Allow-Origin"是服务器有的域名，而不能是"*";
+    allowMethods: ['GET', 'POST', 'DELETE'], //设置允许的HTTP请求类型
+    allowHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
+// 配置静态资源中间件
+app.use(static(__dirname + '/assets/uploads'));
+// 加载路由中间件
+app.use(routers.routes()).use(routers.allowedMethods());
+// 数据库链接
+mongoose.connect(config.database, {useCreateIndex: true});
+let db = mongoose.connection;
+// 防止Mongoose: mpromise 错误 赋值一个全局Promise
+mongoose.Promise = global.Promise;
+db.on('error', function () {
+    console.log('数据库链接错误');
 });
-router.get('/news', async (ctx, next) => {
-    // ctx.body = '新闻页' + ctx.url;
-    let url = ctx.url;
-    //从request中获取GET请求
-    let request = ctx.request;
-    let req_query = request.query;
-    let req_querystring = request.querystring;
-    //从上下文中直接获取
-    let ctx_query = ctx.query;
-    let ctx_querystring = ctx.querystring;
-    ctx.body = {
-        url,
-        req_query,
-        req_querystring,
-        ctx_query,
-        ctx_querystring
-    };
+db.on('open', function () {
+    console.log('数据库链接成功');
 });
-// 动态路由
-router.get('/product/:id', async (ctx) => {
-    let id = ctx.params.id;
-    ctx.body = '这是商品页' + id;
-});
-app.use(router.routes()); // 启动路由
-app.use(router.allowedMethods()); // 作用： 这是官方文档的推荐用法,我们可以看到router.allowedMethods()用在了路由匹配router.routes()之后,所以在当所有路由中间件最后调用.此时根据ctx.status设置response响应头
 app.listen(3000, () => {
-    console.log('[demo] start-quick is starting at port 3000');
+    console.log('The server is running at http://localhost:' + 3000);
 });
-/** 2018/12/20 10:54
+/** 2018/12/27 10:41
  *author::^_夏流_^
- *describe:
+ *describe: server 启动入口
  */

@@ -1,5 +1,5 @@
 const QcloudSms = require('qcloudsms_js');
-const redis = require('../../utils/redis');
+const redis = require('../utils/redis');
 // 短信应用SDK AppID
 const appid = '1400175540';
 // 短信应用SDK AppKey
@@ -43,8 +43,9 @@ const sms = async (ctx) => {
                             reject();
                         } else {
                             if (resData.result === 0) {
-                                redis.set(phoneNumber, randomNum);
-                                redis.set(phoneNumber + 'count', count + 1);
+                                console.log(randomNum);
+                                redis.set(phoneNumber, randomNum, 'EX', 5 * 60);
+                                redis.set(phoneNumber + 'count', count + 1, 'EX', 60 * 60 * 23);
                                 ctx.status = 200;
                                 ctx.body = {
                                     success: true,
